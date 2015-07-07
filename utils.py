@@ -8,17 +8,19 @@ from psycopg2.extras import RealDictCursor
 import dateutil.parser
 
 DIR = os.path.dirname(os.path.abspath(__file__))
-CREDS = os.path.join(DIR, '.creds')
+CREDS = os.getenv("CREDS", os.path.join(DIR, '.creds'))
 VERSION = 'v0.0.1'
 SUBREDDITS = ("news", "worldnews", "politics")
 
 
 def get_creds():
+    if not os.path.exists(CREDS):
+        raise ValueError("You must supply credential json at {}".format(CREDS))
     return json.load(open(CREDS, 'r'))
 
 
 def seconds_from_now(seconds):
-    return datetime.datetime.now() + seconds
+    return datetime.datetime.now() + datetime.timedelta(seconds=seconds)
 
 
 class DBWriter:
