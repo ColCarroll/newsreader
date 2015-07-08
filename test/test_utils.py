@@ -3,10 +3,11 @@ import json
 import datetime
 import unittest
 from nose.tools import assert_in, assert_is_not_none, assert_almost_equal
-from utils import DIR, SAMPLE_CREDS, DATE_FMT, get_creds, seconds_from_now, Reader
+from utils import DIR, SAMPLE_CREDS, DATE_FMT, get_creds, seconds_from_now, RedditReader,\
+    DBWriter
 
 
-class MockReader(Reader):
+class MockRedditReader(RedditReader):
     def post(self, url, **kwargs):
         if url == "https://www.reddit.com/api/v1/access_token":
             return {"expires_in": 3600, "access_token": "test"}
@@ -40,9 +41,44 @@ def test_get_creds():
         assert_is_not_none(creds[key])
 
 
-class TestReader(unittest.TestCase):
+class TestDBWriter(unittest.TestCase):
     def setUp(self):
-        self.reader = MockReader('news', cred_file=SAMPLE_CREDS)
+        self.db = DBWriter()
+        self.db.reader = MockRedditReader('news')
+        self.db.table = "test_headlines"
+
+    def tearDown(self):
+        self.db.drop_table()
+
+    def test_create_table(self):
+        self.assertFalse(self.db._exists())
+        self.db.create_table()
+        self.assertTrue(self.db._exists())
+
+    def test__last_update(self):
+        self.assertEqual(self.db._last_update(), 0,
+                         "Before table has been updated, default return should be 0")
+
+    def test_needs_update(self):
+        self.assertTrue(self.db._needs_update(), "Nothing has been written, so table should update")
+        self.db.create_table()
+        self.assertTrue(self.db._needs_update(), "Nothing has been written, so table should update")
+
+    def test_update(self):
+        data_size = len(list(self.db.reader.gen_articles()))
+        self.db.create_table()
+        self.assertEqual(self.db._count(), 0, "No rows should have been added yet")
+        self.db.update()
+        self.assertEqual(self.db._count(), data_size,
+                         "The table should have been updated")
+        self.db.update()
+        self.assertEqual(self.db._count(), data_size,
+                         "Second update shouldn't change anything")
+
+
+class TestRedditReader(unittest.TestCase):
+    def setUp(self):
+        self.reader = MockRedditReader('news', cred_file=SAMPLE_CREDS)
 
     def expire_auth(self):
         creds = get_creds(SAMPLE_CREDS)

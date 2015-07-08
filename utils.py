@@ -24,6 +24,10 @@ def seconds_from_now(seconds):
     return datetime.datetime.now() + datetime.timedelta(seconds=seconds)
 
 
+def epoch():
+    return int(datetime.datetime.now().strftime("%s"))
+
+
 class DBWriter:
     schema = [
         ("created_utc", "BIGINT"),
@@ -36,24 +40,26 @@ class DBWriter:
         ("url", "TEXT"),
         ("modified_utc", "BIGINT")
         ]
+    table = "headlines"
 
-    def __init__(self):
+    def __init__(self, *subreddits, **kwargs):
         self._creds = None
+        self.cred_file = kwargs.get("cred_file", CREDS)
+        self.reader = RedditReader(*subreddits)
 
     @property
     def creds(self):
         if self._creds is None:
-            self._creds = get_creds()
+            self._creds = get_creds(self.cred_file)
         return self._creds
 
     @contextmanager
-    def connector():
-        creds = get_creds()
+    def connector(self):
         try:
             conn = psycopg2.connect(
-                user=creds.get('db_user'),
-                host=creds.get('db_host'),
-                database=creds.get('database'),
+                user=self.creds.get('db_user'),
+                host=self.creds.get('db_host'),
+                database=self.creds.get('database'),
                 )
             cur = conn.cursor(cursor_factory=RealDictCursor)
             yield cur
@@ -62,8 +68,83 @@ class DBWriter:
             cur.close()
             conn.close()
 
+    def _execute_query(self, query, *args):
+        with self.connector() as cur:
+            cur.execute(query, args)
 
-class Reader:
+    def _fetch_query(self, query):
+        with self.connector() as cur:
+            cur.execute(query)
+            for row in cur:
+                yield row
+
+    def _exists(self):
+        query = "SELECT * FROM {} LIMIT 1".format(self.table)
+        try:
+            self._execute_query(query)
+        except psycopg2.ProgrammingError:
+            return False
+        return True
+
+    def drop_table(self):
+        if not self._exists():
+            return
+        self._execute_query("DROP TABLE {}".format(self.table))
+
+    def create_table(self):
+        self._execute_query("CREATE TABLE {} (\n\t{}\n)".format(
+            self.table,
+            ",\n\t".join([" ".join(j) for j in self.schema])))
+
+    def row_gen(self, article):
+        values = []
+        for key, _ in self.schema:
+            if key == "modified_utc":
+                values.append(epoch())
+            elif key == "created_utc":
+                values.append(int(article[key]))
+            else:
+                values.append(unicode(article[key]))
+        return values
+
+    def update(self):
+        if not self._needs_update():
+            return
+
+        if not self._exists():
+            self.create_table()
+
+        query = u"INSERT INTO {} ({}) VALUES ({})".format(
+                self.table,
+                ",".join([j[0] for j in self.schema]),
+                ",".join(["%s" for _ in self.schema]))
+        for article in self.reader.gen_articles():
+            self._execute_query(query, *self.row_gen(article))
+
+    def _count(self):
+        for row in self._fetch_query(
+                "SELECT COUNT(*) AS count FROM {}".format(self.table)):
+            count = row["count"]
+        return count
+
+    def _last_update(self):
+        try:
+            for row in self._fetch_query(
+                    "SELECT MAX(modified_utc) AS max_utc FROM {}".format(self.table)):
+                last_update = row["max_utc"]
+            if last_update is not None:
+                return last_update
+        except psycopg2.ProgrammingError:
+            pass
+        return 0
+
+    def _needs_update(self):
+        if not self._exists():
+            return True
+        return epoch() - self._last_update() > 60 * 60
+
+
+class RedditReader:
     def __init__(self, *subreddits, **kwargs):
         self.subreddits = subreddits
         self.t = 'day'
@@ -122,11 +203,6 @@ class Reader:
         params = dict(self.params.items() + kwargs.items())
         return self.get(url, headers=self.headers, params=params)
 
-    def gen_articles(self):
-        for subreddit in self.subreddits:
-            for j in self.gen_subreddit(subreddit):
-                yield j
-
     def get_subreddit_data(self, subreddit, after=None):
         return self.get_url("https://oauth.reddit.com/r/{:s}/top".format(subreddit),
                             after=after)['data']['children']
@@ -145,7 +221,11 @@ class Reader:
                     keep_looking -= 1
                 after = data['name']
 
+    def gen_articles(self):
+        for subreddit in self.subreddits:
+            for j in self.gen_subreddit(subreddit):
+                yield j
+
 
 if __name__ == '__main__':
-    for article in Reader('news', 'worldnews').gen_articles():
-        print(article['score'], article['title'])
+    DBWriter(*SUBREDDITS).update()
