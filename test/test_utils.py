@@ -67,8 +67,11 @@ class TestDBWriter(unittest.TestCase):
         self.assertEqual(self.db._count(), data_size,
                          "The table should have been updated")
         self.db.update()
-        self.assertEqual(self.db._count(), data_size,
-                         "Second update shouldn't change anything")
+        self.assertEqual(
+            self.db._count(),
+            data_size,
+            "Second update shouldn't change anything (count is {:,d} instead of {:d})".format(
+                self.db._count(), data_size))
 
 
 class TestRedditReader(unittest.TestCase):

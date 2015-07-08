@@ -122,7 +122,8 @@ class DBWriter:
         insert_query = u"INSERT INTO {} ({}) VALUES ({})".format(self.table, columns, values)
         for article in self.reader.gen_articles():
             article_data = self._article_data(article)
-            if article_data is not None and article_data['score'] != article['score']:
+            if article_data is not None:
+                if article_data['score'] != article['score']:
                     self._execute_query(update_query, article['score'], article['id'])
             else:
                 self._execute_query(insert_query, *self.row_gen(article))
