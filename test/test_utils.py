@@ -1,6 +1,26 @@
+import os
+import json
+import datetime
 import unittest
 from nose.tools import assert_in, assert_is_not_none, assert_almost_equal
-from utils import get_creds, seconds_from_now, Reader
+from utils import DIR, SAMPLE_CREDS, DATE_FMT, get_creds, seconds_from_now, Reader
+
+
+class MockReader(Reader):
+    def post(self, url, **kwargs):
+        if url == "https://www.reddit.com/api/v1/access_token":
+            return {"expires_in": 3600, "access_token": "test"}
+        raise ValueError("Bad url")
+
+    def get(self, url, **kwargs):
+        if url == "https://www.reddit.com/api/v1/access_token":
+            return {"expires_in": 3600, "access_token": str(datetime.datetime.today())}
+        raise ValueError("Bad url")
+
+    def get_subreddit_data(self, subreddit, after=None):
+        return json.load(
+            open(os.path.join(DIR, 'test', 'sample_{}.json'.format(subreddit)), 'r')
+            )['data']['children']
 
 
 def test_seconds_from_now():
@@ -22,8 +42,30 @@ def test_get_creds():
 
 class TestReader(unittest.TestCase):
     def setUp(self):
-        self.reader = Reader('news')
+        self.reader = MockReader('news', cred_file=SAMPLE_CREDS)
+
+    def expire_auth(self):
+        creds = get_creds(SAMPLE_CREDS)
+        creds["expires"] = (datetime.datetime.today() - datetime.timedelta(seconds=100)).strftime(DATE_FMT)
+        json.dump(creds, open(SAMPLE_CREDS, 'w'))
+        self.reader._creds = None
+
+    def remove_auth(self):
+        creds = {k: v for k, v in get_creds(SAMPLE_CREDS).iteritems() if k != 'token'}
+        json.dump(creds, open(SAMPLE_CREDS, 'w'))
 
     def test_get_headers(self):
+        self.remove_auth()
+        self.assertNotIn("token", self.reader.creds)
         self.assertIn("Authorization", self.reader.headers)
         self.assertIsNotNone(self.reader.headers["Authorization"])
+        self.assertIn("token", self.reader.creds, "Accessing headers caches token")
+
+    def test__is_expired(self):
+        self.reader.headers
+        self.assertFalse(self.reader._is_expired(), "Headers should return unexpired token")
+        self.expire_auth()
+        self.assertTrue(self.reader._is_expired())
+
+    def test_gen_subreddit(self):
+        self.assertGreater(len(list(self.reader.gen_subreddit('news'))), 10)
