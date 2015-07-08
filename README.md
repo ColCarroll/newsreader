@@ -1,9 +1,11 @@
 Newsreader
 ==========
 Uses the reddit api to grab the most popular news headlines (defined more carefully as "any link 
-with over 100 votes from /r/news, /r/worldnews, or /r/politics," though this is configurable).  
-Builds a postgres table with the relevant data in it.  Future plans are to use the data to predict
-scores of headlines.
+with over 100 votes from /r/news, /r/worldnews, or /r/politics," though this is configurable).
+Builds a postgres table with the relevant data in it.  Right now, I am only tracking the highest
+score each article gets to -- each run will update an existing score if it is higher (but will not
+make two entries for that article).  Future plans are to use the data to predict scores of 
+headlines.
 
 Installation
 ============
@@ -35,4 +37,5 @@ Running
 =======
 Running `(venv) newsreader $ python utils.py` will run the code 
 `utils.DBWriter('news', 'worldnews', 'politics')`, which will update the table `headlines` in your 
-database with any articles on the front page of reddit with >100 points.
+database with any articles on the front page of reddit with >100 points.  It will also update any 
+existing articles in your database if the score has changed.

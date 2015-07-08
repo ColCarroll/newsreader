@@ -1,1 +1,1 @@
-{"username": "testy_mc_tests_alot", "expires": "2015-07-08 12:53:35", "token": "bearer test", "client_id": "212kjl32o4", "client_secret": "thisisasecret", "password": "123password321", "db_user": "database_username", "db_host": "localhost", "database": "reddit_news"}
+{"username": "testy_mc_tests_alot", "database": "reddit_news", "expires": "2015-07-08 14:06:11", "token": "bearer test", "db_user": "database_username", "db_host": "localhost", "client_id": "212kjl32o4", "client_secret": "thisisasecret", "password": "123password321"}

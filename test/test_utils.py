@@ -55,14 +55,9 @@ class TestDBWriter(unittest.TestCase):
         self.db.create_table()
         self.assertTrue(self.db._exists())
 
-    def test__last_update(self):
-        self.assertEqual(self.db._last_update(), 0,
-                         "Before table has been updated, default return should be 0")
-
-    def test_needs_update(self):
-        self.assertTrue(self.db._needs_update(), "Nothing has been written, so table should update")
+    def test__article_data(self):
         self.db.create_table()
-        self.assertTrue(self.db._needs_update(), "Nothing has been written, so table should update")
+        self.assertIsNone(self.db._article_data({"id": "not_an_id"}))
 
     def test_update(self):
         data_size = len(list(self.db.reader.gen_articles()))

@@ -38,7 +38,6 @@ class DBWriter:
         ("subreddit", "TEXT"),
         ("title", "TEXT"),
         ("url", "TEXT"),
-        ("modified_utc", "BIGINT")
         ]
     table = "headlines"
 
@@ -72,9 +71,9 @@ class DBWriter:
         with self.connector() as cur:
             cur.execute(query, args)
 
-    def _fetch_query(self, query):
+    def _fetch_query(self, query, *args):
         with self.connector() as cur:
-            cur.execute(query)
+            cur.execute(query, args)
             for row in cur:
                 yield row
 
@@ -99,49 +98,40 @@ class DBWriter:
     def row_gen(self, article):
         values = []
         for key, _ in self.schema:
-            if key == "modified_utc":
-                values.append(epoch())
-            elif key == "created_utc":
+            if key == "created_utc":
                 values.append(int(article[key]))
             else:
                 values.append(unicode(article[key]))
         return values
 
-    def update(self):
-        if not self._needs_update():
-            return
+    def _article_data(self, article):
+        row_data = None
+        for row_data in self._fetch_query(
+                "SELECT id, score FROM {} WHERE id = %s".format(self.table),
+                article["id"]):
+            pass
+        return row_data
 
+    def update(self):
         if not self._exists():
             self.create_table()
 
-        query = u"INSERT INTO {} ({}) VALUES ({})".format(
-                self.table,
-                ",".join([j[0] for j in self.schema]),
-                ",".join(["%s" for _ in self.schema]))
+        columns = ",".join([j[0] for j in self.schema])
+        values = ",".join(["%s" for _ in self.schema])
+        update_query = u"UPDATE {} SET score = %s WHERE id = %s".format(self.table)
+        insert_query = u"INSERT INTO {} ({}) VALUES ({})".format(self.table, columns, values)
         for article in self.reader.gen_articles():
-            self._execute_query(query, *self.row_gen(article))
+            article_data = self._article_data(article)
+            if article_data is not None and article_data['score'] != article['score']:
+                    self._execute_query(update_query, article['score'], article['id'])
+            else:
+                self._execute_query(insert_query, *self.row_gen(article))
 
     def _count(self):
         for row in self._fetch_query(
                 "SELECT COUNT(*) AS count FROM {}".format(self.table)):
             count = row["count"]
         return count
-
-    def _last_update(self):
-        try:
-            for row in self._fetch_query(
-                    "SELECT MAX(modified_utc) AS max_utc FROM {}".format(self.table)):
-                last_update = row["max_utc"]
-            if last_update is not None:
-                return last_update
-        except psycopg2.ProgrammingError:
-            pass
-        return 0
-
-    def _needs_update(self):
-        if not self._exists():
-            return True
-        return epoch() - self._last_update() > 60 * 60
 
 
 class RedditReader:
@@ -228,4 +218,6 @@ class RedditReader:
 
 
 if __name__ == '__main__':
-    DBWriter(*SUBREDDITS).update()
+    writer = DBWriter(*SUBREDDITS)
+    writer.reader.t = 'year'
+    writer.update()
