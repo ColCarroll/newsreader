@@ -2,9 +2,9 @@ import os
 import json
 import datetime
 import unittest
-from nose.tools import assert_in, assert_is_not_none, assert_almost_equal
+from nose.tools import assert_in, assert_is_not_none, assert_almost_equal, assert_equal
 from utils import DIR, SAMPLE_CREDS, DATE_FMT, get_creds, seconds_from_now, RedditReader,\
-    DBWriter
+    DBWriter, fetch_raw_data
 
 
 class MockRedditReader(RedditReader):
@@ -39,6 +39,11 @@ def test_get_creds():
     for key in ('client_id', 'client_secret', "username", "password"):
         assert_in(key, creds)
         assert_is_not_none(creds[key])
+
+
+def test_fetch_raw_data():
+    db = DBWriter()
+    assert_equal(db._count(), len(fetch_raw_data()))
 
 
 class TestDBWriter(unittest.TestCase):
@@ -80,7 +85,8 @@ class TestRedditReader(unittest.TestCase):
 
     def expire_auth(self):
         creds = get_creds(SAMPLE_CREDS)
-        creds["expires"] = (datetime.datetime.today() - datetime.timedelta(seconds=100)).strftime(DATE_FMT)
+        creds["expires"] = (
+            datetime.datetime.today() - datetime.timedelta(seconds=100)).strftime(DATE_FMT)
         json.dump(creds, open(SAMPLE_CREDS, 'w'))
         self.reader._creds = None
 

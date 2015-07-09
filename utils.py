@@ -12,6 +12,8 @@ SAMPLE_CREDS = os.getenv("CREDS", os.path.join(DIR, '.sample_creds'))
 VERSION = 'v0.0.1'
 SUBREDDITS = ("news", "worldnews", "politics")
 DATE_FMT = "%Y-%m-%d %H:%M:%S"
+FEATURE_COLS = ['title', 'subreddit', 'domain']
+LABEL_COL = 'score'
 
 
 def get_creds(path=CREDS):
@@ -45,6 +47,12 @@ class DBWriter:
         self._creds = None
         self.cred_file = kwargs.get("cred_file", CREDS)
         self.reader = RedditReader(*subreddits)
+
+    def fetch_raw_data(self):
+        return list(
+            self._fetch_query("SELECT {} FROM {}".format(
+                ",".join(FEATURE_COLS + [LABEL_COL]),
+                self.table)))
 
     @property
     def creds(self):
@@ -139,7 +147,7 @@ class RedditReader:
     def __init__(self, *subreddits, **kwargs):
         self.subreddits = subreddits
         self.t = 'day'
-        self.min_score = 100
+        self.min_score = 0
         self.sort = "top"
         self.trailing_look = 10
         self._creds = None
@@ -218,7 +226,11 @@ class RedditReader:
                 yield j
 
 
+def fetch_raw_data():
+    return DBWriter(*SUBREDDITS).fetch_raw_data()
+
+
 if __name__ == '__main__':
     writer = DBWriter(*SUBREDDITS)
-    writer.reader.t = 'year'
+    writer.reader.t = 'day'
     writer.update()
