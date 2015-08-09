@@ -108,4 +108,5 @@ class TestRedditReader(unittest.TestCase):
         self.assertTrue(self.reader._is_expired())
 
     def test_gen_subreddit(self):
-        self.assertGreater(len(list(self.reader.gen_subreddit('news'))), 10)
+        self.assertGreater(len(list(self.reader.gen_subreddit('news'))), 3,
+                           "Should return a few articles")
