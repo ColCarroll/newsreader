@@ -1,12 +1,12 @@
 import pandas
-import numpy
+from sklearn.cross_validation import KFold
 from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
 from sklearn.preprocessing import Normalizer, PolynomialFeatures
 from sklearn.base import BaseEstimator, TransformerMixin
-from sklearn.linear_model import ElasticNet
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline, FeatureUnion
-from sklearn.grid_search import GridSearchCV
-from sklearn.decomposition import TruncatedSVD
+from sklearn.decomposition import TruncatedSVD, PCA
 from utils import FEATURE_COLS, LABEL_COL, fetch_raw_data
 
 DUMMY_VAR = 'dummy'
@@ -21,6 +21,15 @@ class ItemSelector(BaseEstimator, TransformerMixin):
 
     def transform(self, x, y=None):
         return x[self.key]
+
+
+class Densifier(object):
+    def fit(self, X, y=None):
+        pass
+    def fit_transform(self, X, y=None):
+        return self.transform(X)
+    def transform(self, X, y=None):
+        return X.toarray()
 
 
 class Features(object):
@@ -44,7 +53,7 @@ class Features(object):
     def labels(self):
         if self._labels is None:
             self._get_features_and_labels()
-        return numpy.log1p(self._labels)
+        return (self._labels > 1000).values.ravel()
 
 
 def get_pipeline():
@@ -68,29 +77,41 @@ def get_pipeline():
             ("domain", domain_pipeline),
             ("subreddit", subreddit_pipeline),
             ("title", title_pipeline)])),
+        ('to_dense', Densifier()),
+        #  ('poly_features', PolynomialFeatures(degree=2)),
         ('truncated_svd', TruncatedSVD(n_components=100)),
-        ('poly_features', PolynomialFeatures(degree=2)),
         ('normalize', Normalizer()),
-        ("model", ElasticNet())
+        #  ("model", LogisticRegression(C=10, penalty='l1')),
+        ("model", RandomForestClassifier(n_estimators=100)),
         ])
+    return model_pipeline
 
-    parameters = {
-        "model__alpha": [1, 3, 10],
-    }
-    return model_pipeline, parameters
+
+def confusion(y_true, y_pred):
+    true_true = (y_true * y_pred).sum()
+    false_false = ((1 - y_true) * (1 - y_pred)).sum()
+    true = y_true.sum()
+    false = y_true.shape[0] - true
+    predict_true = y_pred.sum()
+    predict_false = y_pred.shape[0] - predict_true
+    print("\n")
+    print("P(predict true | true) = {:,d} / {:,d} = {:.2%}".format(
+        true_true, true, float(true_true) / float(true)))
+    print("P(true | predict true) = {:,d} / {:,d} = {:.2%}".format(
+        true_true, predict_true, float(true_true) / float(predict_true)))
+    print("P(predict false | false) = {:,d} / {:,d} = {:.2%}".format(
+        false_false, false, float(false_false) / float(false)))
+    print("P(false | predict false) = {:,d} / {:,d} = {:.2%}".format(
+        false_false, predict_false, float(false_false) / float(predict_false)))
+    print("\n")
 
 
 def train_model():
-    pipe, params = get_pipeline()
-    grid_search = GridSearchCV(pipe, params, n_jobs=-1, verbose=1)
     features = Features()
-    grid_search.fit(features.features, features.labels)
-    print("Best score: %0.3f" % grid_search.best_score_)
-    print("Best parameters set:")
-    best_parameters = grid_search.best_estimator_.get_params()
-    for param_name in sorted(params.keys()):
-        print("\t%s: %r" % (param_name, best_parameters[param_name]))
-
+    for train_idx, test_idx in KFold(features.features.shape[0], shuffle=True, n_folds=3):
+        pipe = get_pipeline()
+        pipe.fit(features.features.iloc[train_idx], features.labels[train_idx])
+        confusion(features.labels[test_idx], pipe.predict(features.features.iloc[test_idx]))
 
 if __name__ == '__main__':
     train_model()
